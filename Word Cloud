@@ -1,0 +1,94 @@
+if (!require(tm)) install.packages("tm")
+if (!require(SnowballC)) install.packages("SnowballC")
+if (!require(wordcloud)) install.packages("wordcloud")
+if (!require(RColorBrewer)) install.packages("RColorBrewer")
+if (!require(udpipe)) install.packages("udpipe")
+
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(udpipe)
+
+# Read your Goodreads quotes export
+dat <- read.csv("goodreads_quotes_export.csv", stringsAsFactors = FALSE)
+
+# Check column names
+names(dat)
+
+# Combine Quote + Tags into one text field
+dat$text <- paste(dat$Quote, dat$Tags, sep = " ")
+
+# Remove missing / blank rows
+dat <- dat[!is.na(dat$text) & dat$text != "", ]
+
+# Download English model once if needed
+if (!file.exists("english-ewt-ud-2.5-191206.udpipe")) {
+  model <- udpipe_download_model(language = "english")
+  file.copy(model$file_model, basename(model$file_model))
+}
+
+# Load model
+ud_model <- udpipe_load_model("english-ewt-ud-2.5-191206.udpipe")
+
+# Annotate text
+anno <- udpipe_annotate(ud_model, x = dat$text)
+anno <- as.data.frame(anno)
+
+# Keep only nouns + adjectives
+filtered <- anno[anno$upos %in% c("NOUN", "ADJ"), ]
+
+# Use lemmas (base forms)
+words <- tolower(filtered$lemma)
+
+# Remove NA / blanks
+words <- words[!is.na(words) & words != ""]
+
+# Remove short junk
+words <- words[nchar(words) > 2]
+
+# Remove stopwords and custom junk
+custom_stopwords <- c(
+  stopwords("english"),
+  "goodreads", "quote", "quotes", "book", "books",
+  "one", "people", "life", "world", "thing", "things",
+  "someone", "something", "everything", "anything", "nothing",
+  "man", "men", "woman", "women", "person", "human"
+)
+
+words <- words[!words %in% custom_stopwords]
+
+# Count word frequencies
+freq <- sort(table(words), decreasing = TRUE)
+
+d <- data.frame(
+  word = names(freq),
+  freq = as.numeric(freq)
+)
+
+# Look at top words first
+head(d, 20)
+
+# Close old plot windows
+graphics.off()
+
+# Open fresh plot window
+windows()
+plot.new()
+
+# Make word cloud
+graphics.off()
+
+windows(width = 12, height = 8)
+par(mar = c(2, 2, 2, 2))
+
+wordcloud(
+  words = d$word,
+  freq = d$freq,
+  min.freq = 3,
+  max.words = 60,
+  random.order = FALSE,
+  rot.per = 0,
+  scale = c(3, 0.7),
+  colors = brewer.pal(8, "Dark2")
+)
